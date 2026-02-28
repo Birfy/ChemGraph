@@ -9,6 +9,7 @@ from chemgraph.models.supported_models import (
     all_supported_models,
     supported_anthropic_models,
     supported_argo_models,
+    supported_bailian_models,
     supported_gemini_models,
     supported_ollama_models,
     supported_openai_models,
@@ -75,6 +76,8 @@ def get_base_url_for_model_from_nested_config(
         return api.get("google", {}).get("base_url")
     if model_name in supported_ollama_models:
         return api.get("local", {}).get("base_url")
+    if model_name in supported_bailian_models:
+        return api.get("bailian", {}).get("base_url")
     return normalize_openai_base_url(api.get("openai", {}).get("base_url"))
 
 
@@ -90,6 +93,8 @@ def get_base_url_for_model_from_flat_config(
         return config.get("api_google_base_url")
     if model_name in supported_ollama_models:
         return config.get("api_local_base_url")
+    if model_name in supported_bailian_models:
+        return config.get("api_bailian_base_url")
     return normalize_openai_base_url(config.get("api_openai_base_url"))
 
 

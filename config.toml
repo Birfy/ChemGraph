@@ -1,11 +1,11 @@
 [general]
-model = "gemini-2.5-flash"
+model = "Moonshot-Kimi-K2-Instruct"
 workflow = "single_agent"
 output = "state"
 structured = true
 report = true
 thread = 1
-recursion_limit = 20
+recursion_limit = 100
 verbose = false
 
 [logging]
@@ -39,6 +39,10 @@ timeout = 30
 
 [api.google]
 base_url = "https://generativelanguage.googleapis.com/v1beta"
+timeout = 30
+
+[api.bailian]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 timeout = 30
 
 [api.local]

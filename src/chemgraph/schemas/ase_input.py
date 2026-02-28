@@ -104,7 +104,7 @@ class ASEInputSchema(BaseModel):
     )
     driver: str = Field(
         default=None,
-        description="Specifies the type of simulation to run. Options: 'energy' for electronic energy calculations, 'dipole' for dipole moment calculation, 'opt' for geometry optimization, 'vib' for vibrational frequency analysis, 'ir' for calculating infrared spectrum, and 'thermo' for thermochemical properties (including enthalpy, entropy, and Gibbs free energy). Use 'thermo' when the query involves enthalpy, entropy, or Gibbs free energy calculations.",
+        description="Specifies the type of simulation to run. Options: 'energy' for electronic energy calculations, 'dipole' for dipole moment calculation, 'opt' for geometry optimization, 'vib' for vibrational frequency analysis, 'ir' for calculating infrared spectrum, 'thermo' for thermochemical properties (including enthalpy, entropy, and Gibbs free energy), and 'md' for molecular dynamics simulation (NVT/NPT/NVE). Use 'thermo' when the query involves enthalpy, entropy, or Gibbs free energy calculations. Use 'md' when the query involves molecular dynamics, trajectory, or time evolution.",
     )
     optimizer: str = Field(
         default="bfgs",
@@ -129,6 +129,34 @@ class ASEInputSchema(BaseModel):
     pressure: float = Field(
         default=101325.0,
         description="Pressure for thermochemistry calculations in Pascal (Pa).",
+    )
+    ensemble: str = Field(
+        default="nvt",
+        description="MD ensemble: 'nvt' (canonical, constant T), 'npt' (isothermal-isobaric, constant T and P), or 'nve' (microcanonical, constant energy). Only used when driver='md'.",
+    )
+    md_steps: int = Field(
+        default=1000,
+        description="Number of MD integration steps. Total simulation time = md_steps * md_timestep fs. Only used when driver='md'.",
+    )
+    md_timestep: float = Field(
+        default=1.0,
+        description="MD integration timestep in femtoseconds (fs). Typical values: 0.5–2.0 fs. Only used when driver='md'.",
+    )
+    md_temperature: float = Field(
+        default=300.0,
+        description="Target temperature in Kelvin for NVT or NPT MD. Only used when driver='md'.",
+    )
+    md_pressure: float = Field(
+        default=101325.0,
+        description="Target pressure in Pascal for NPT MD. Default is 1 atm (101325 Pa). Only used when driver='md' with ensemble='npt'.",
+    )
+    thermostat_friction: float = Field(
+        default=0.02,
+        description="Langevin thermostat friction coefficient in 1/fs. Controls coupling to heat bath in NVT MD. Only used when driver='md' with ensemble='nvt'.",
+    )
+    trajectory_interval: int = Field(
+        default=10,
+        description="Write a trajectory frame every N MD steps. Only used when driver='md'.",
     )
 
     @model_validator(mode="before")
@@ -211,6 +239,10 @@ class ASEOutputSchema(BaseModel):
         description="Infrared spectrum related data.",
     )
     thermochemistry: dict = Field(default={}, description="Thermochemistry data in eV.")
+    md_data: dict = Field(
+        default={},
+        description="Molecular dynamics data: ensemble, steps, timestep, energy/temperature evolution, and trajectory file path.",
+    )
     success: bool = Field(
         default=False, description="Indicates if the simulation finished correctly."
     )
@@ -220,7 +252,7 @@ class ASEOutputSchema(BaseModel):
         description="Total wall time (in seconds) taken to complete the simulation.",
     )
 
-    @field_validator("vibrational_frequencies", "ir_data", "thermochemistry", mode="before")
+    @field_validator("vibrational_frequencies", "ir_data", "thermochemistry", "md_data", mode="before")
     @classmethod
     def _coerce_json_string_to_dict(cls, v: Any) -> dict:
         """Accept dict-like payloads serialized as JSON strings."""

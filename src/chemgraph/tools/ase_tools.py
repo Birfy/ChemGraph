@@ -409,6 +409,115 @@ def run_ase(params: ASEInputSchema) -> ASEOutputSchema:
             "unit": "eV",
         }
 
+    if driver == "md":
+        from ase.md.langevin import Langevin
+        from ase.md.verlet import VelocityVerlet
+        from ase.io import Trajectory
+        from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary
+        from ase import units
+
+        ensemble = params.ensemble.lower()
+        md_steps = params.md_steps
+        md_timestep = params.md_timestep
+        md_temperature = params.md_temperature
+        md_pressure = params.md_pressure
+        thermostat_friction = params.thermostat_friction
+        trajectory_interval = params.trajectory_interval
+
+        mol_stem = Path(input_structure_file).stem
+        traj_path = _resolve_path(f"md_{mol_stem}.traj")
+
+        # Initialize velocities from Maxwell-Boltzmann distribution
+        MaxwellBoltzmannDistribution(atoms, temperature_K=md_temperature)
+        Stationary(atoms)  # Remove center-of-mass momentum
+
+        if ensemble == "nvt":
+            dyn = Langevin(
+                atoms,
+                md_timestep * units.fs,
+                temperature_K=md_temperature,
+                friction=thermostat_friction / units.fs,
+            )
+        elif ensemble == "npt":
+            from ase.md.npt import NPT
+
+            dyn = NPT(
+                atoms,
+                md_timestep * units.fs,
+                temperature_K=md_temperature,
+                externalstress=md_pressure * units.Pascal,
+                ttime=25 * units.fs,
+                pfactor=75**2 * units.GPa * units.fs**2,
+            )
+        else:  # nve
+            dyn = VelocityVerlet(atoms, md_timestep * units.fs)
+
+        traj = Trajectory(traj_path, "w", atoms)
+        pot_energies, kin_energies, temperatures = [], [], []
+
+        def _collect():
+            pot_energies.append(float(atoms.get_potential_energy()))
+            kin_energies.append(float(atoms.get_kinetic_energy()))
+            temperatures.append(float(atoms.get_temperature()))
+
+        dyn.attach(_collect, interval=trajectory_interval)
+        dyn.attach(traj.write, interval=trajectory_interval)
+        dyn.run(md_steps)
+        traj.close()
+
+        final_structure = atoms_to_atomsdata(atoms)
+        total_time_fs = md_steps * md_timestep
+
+        md_data = {
+            "ensemble": ensemble,
+            "total_steps": md_steps,
+            "timestep_fs": md_timestep,
+            "total_time_fs": total_time_fs,
+            "target_temperature_K": md_temperature,
+            "n_frames": len(pot_energies),
+            "potential_energies_eV": pot_energies,
+            "kinetic_energies_eV": kin_energies,
+            "temperatures_K": temperatures,
+            "mean_temperature_K": float(np.mean(temperatures)) if temperatures else None,
+            "mean_potential_energy_eV": float(np.mean(pot_energies)) if pot_energies else None,
+            "trajectory_file": os.path.abspath(traj_path),
+        }
+
+        end_time = time.time()
+        wall_time = end_time - start_time
+
+        simulation_output = ASEOutputSchema(
+            input_structure_file=input_structure_file,
+            converged=True,
+            final_structure=final_structure,
+            simulation_input=params,
+            single_point_energy=pot_energies[-1] if pot_energies else None,
+            md_data=md_data,
+            success=True,
+            wall_time=wall_time,
+        )
+        with open(output_results_file, "w", encoding="utf-8") as wf:
+            wf.write(simulation_output.model_dump_json(indent=4))
+
+        return {
+            "status": "success",
+            "message": (
+                f"MD simulation ({ensemble.upper()}, {md_steps} steps, "
+                f"{total_time_fs:.1f} fs) completed. "
+                f"Trajectory saved to {os.path.abspath(traj_path)}. "
+                f"Full results saved to {os.path.abspath(output_results_file)}."
+            ),
+            "result": {
+                "ensemble": ensemble,
+                "total_time_fs": total_time_fs,
+                "n_frames": len(pot_energies),
+                "mean_temperature_K": md_data["mean_temperature_K"],
+                "mean_potential_energy_eV": md_data["mean_potential_energy_eV"],
+                "final_potential_energy_eV": pot_energies[-1] if pot_energies else None,
+                "trajectory_file": md_data["trajectory_file"],
+            },
+        }
+
     OPTIMIZERS = {
         "bfgs": BFGS,
         "lbfgs": LBFGS,
@@ -443,7 +552,8 @@ def run_ase(params: ASEInputSchema) -> ASEOutputSchema:
             from ase.vibrations import Vibrations
             from ase import units
 
-            vib_name = _resolve_path("vib")
+            mol_stem = Path(input_structure_file).stem
+            vib_name = _resolve_path(f"vib_{mol_stem}")
             vib = Vibrations(atoms, name=vib_name)
 
             vib.clean()
@@ -478,7 +588,7 @@ def run_ase(params: ASEInputSchema) -> ASEOutputSchema:
                 os.remove(traj_file)
 
             # Write frequencies into frequencies.txt
-            freq_file_path = _resolve_path("frequencies.csv")
+            freq_file_path = _resolve_path(f"frequencies_{mol_stem}.csv")
             freq_file = Path(freq_file_path)
             if freq_file.exists():
                 freq_file.unlink()
@@ -503,7 +613,7 @@ def run_ase(params: ASEInputSchema) -> ASEOutputSchema:
 
                 ir_data["spectrum_intensities_units"] = "D/Å^2 amu^-1"
 
-                ir_name = _resolve_path("ir")
+                ir_name = _resolve_path(f"ir_{mol_stem}")
                 ir = Infrared(atoms, name=ir_name)
                 ir.clean()
                 ir.run()
@@ -527,7 +637,7 @@ def run_ase(params: ASEInputSchema) -> ASEOutputSchema:
                 ax.grid(True)
                 ax.set_title("Infrared Spectrum")
                 ax.grid(True)
-                ir_plot_path = _resolve_path("ir_spectrum.png")
+                ir_plot_path = _resolve_path(f"ir_spectrum_{mol_stem}.png")
                 fig.savefig(ir_plot_path, format="png", dpi=300)
 
                 ir_data["IR Plot"] = f"Saved to {os.path.abspath(ir_plot_path)}"

@@ -9,6 +9,7 @@ from chemgraph.models.local_model import load_ollama_model
 from chemgraph.models.anthropic import load_anthropic_model
 from chemgraph.models.gemini import load_gemini_model
 from chemgraph.models.groq import load_groq_model
+from chemgraph.models.bailian import load_bailian_model
 from chemgraph.models.supported_models import (
     supported_openai_models,
     supported_ollama_models,
@@ -17,6 +18,7 @@ from chemgraph.models.supported_models import (
     supported_argo_models,
     supported_gemini_models,
     supported_groq_models,
+    supported_bailian_models,
 )
 
 from chemgraph.prompt.single_agent_prompt import (
@@ -189,6 +191,13 @@ class ChemGraph:
             elif model_name in supported_groq_models:
                 llm = load_groq_model(
                     model_name=model_name, api_key=api_key, temperature=temperature
+                )
+            elif model_name in supported_bailian_models:
+                llm = load_bailian_model(
+                    model_name=model_name,
+                    temperature=temperature,
+                    api_key=api_key,
+                    base_url=base_url,
                 )
 
             else:  # Assume it might be a vLLM or other custom OpenAI-compatible endpoint

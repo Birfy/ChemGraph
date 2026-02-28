@@ -42,6 +42,7 @@ initial_evaluations/
 test/
 test_outputs/
 *ir/
+cg_logs/
 
 .venv
 combine*

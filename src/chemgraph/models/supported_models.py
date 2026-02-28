@@ -128,6 +128,24 @@ supported_argo_models = [
     "claudehaiku35",
 ]
 
+# Alibaba Bailian (百炼) models - OpenAI compatible API
+supported_bailian_models = [
+    "qwen-max",
+    "qwen-plus",
+    "qwen-turbo",
+    "qwen-long",
+    "qwen2.5-72b-instruct",
+    "qwen2.5-14b-instruct",
+    "qwen2.5-7b-instruct",
+    "qwen2.5-coder-32b-instruct",
+    "qwq-32b",
+    "deepseek-r1",
+    "deepseek-v3",
+    # Moonshot models via Bailian marketplace
+    "Moonshot-Kimi-K2-Instruct",
+    "moonshot-kimi-k2-instruct",
+]
+
 all_supported_models = (
     supported_openai_models
     + supported_ollama_models
@@ -137,4 +155,5 @@ all_supported_models = (
     + supported_argoproxy_models
     + supported_gemini_models
     + supported_groq_models
+    + supported_bailian_models
 )

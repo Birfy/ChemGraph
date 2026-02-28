@@ -180,7 +180,7 @@ def ChemGraphAgent(state: State, llm: ChatOpenAI, system_prompt: str, tools=None
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"{state['messages']}"},
     ]
-    llm_with_tools = llm.bind_tools(tools=tools)
+    llm_with_tools = llm.bind_tools(tools=tools, parallel_tool_calls=False)
     return {"messages": [llm_with_tools.invoke(messages)]}
 
 
@@ -205,8 +205,21 @@ def ResponseAgent(state: State, llm: ChatOpenAI, formatter_prompt: str):
         {"role": "system", "content": formatter_prompt},
         {"role": "user", "content": f"{state['messages']}"},
     ]
-    llm_structured_output = llm.with_structured_output(ResponseFormatter)
-    response = llm_structured_output.invoke(messages).model_dump_json()
+    try:
+        llm_structured_output = llm.with_structured_output(ResponseFormatter)
+        response = llm_structured_output.invoke(messages).model_dump_json()
+    except Exception as e:
+        logger.warning(f"Structured output failed ({e}), falling back to plain text.")
+        # Fall back: find the last AI message with actual content
+        fallback_content = ""
+        for msg in reversed(state["messages"]):
+            content = getattr(msg, "content", None) or (
+                msg.get("content") if isinstance(msg, dict) else None
+            )
+            if content and isinstance(content, str) and content.strip():
+                fallback_content = content.strip()
+                break
+        response = ResponseFormatter(answer=fallback_content or str(state["messages"][-1])).model_dump_json()
     return {"messages": [response]}
 
 

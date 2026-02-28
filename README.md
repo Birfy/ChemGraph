@@ -57,6 +57,7 @@ Required keys depend on provider/model:
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 - `GROQ_API_KEY`
+- `DASHSCOPE_API_KEY` (Alibaba Bailian / 百炼)
 - Optional: `ARGO_USER` (Argo setups)
 
 Best practice for `docker run` is host variable pass-through:
@@ -385,6 +386,11 @@ timeout = 30
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 timeout = 30
 
+[api.bailian]
+# Alibaba Bailian (百炼) - OpenAI-compatible endpoint
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+timeout = 30
+
 [api.local]
 # For local models like Ollama
 base_url = "http://localhost:11434"
@@ -589,6 +595,11 @@ chemgraph -q "Your query" -m claude-3-opus-20240229
 # Google models
 chemgraph -q "Your query" -m gemini-1.5-pro
 
+# Alibaba Bailian (百炼) models
+chemgraph -q "Your query" -m qwen-max
+chemgraph -q "Your query" -m qwen-plus
+chemgraph -q "Your query" -m qwq-32b
+
 # Local/OpenAI-compatible endpoints
 chemgraph -q "Your query" -m llama-3.1-70b-instruct
 ```
@@ -741,12 +752,16 @@ export ANTHROPIC_API_KEY="your_anthropic_key_here"
 
 # Google (for Gemini models)
 export GEMINI_API_KEY="your_gemini_key_here"
+
+# Alibaba Bailian / 百炼 (for Qwen and DeepSeek models via DashScope)
+export DASHSCOPE_API_KEY="your_dashscope_key_here"
 ```
 
 **Getting API Keys:**
 - **OpenAI**: Visit [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 - **Anthropic**: Visit [console.anthropic.com](https://console.anthropic.com/)
 - **Google**: Visit [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+- **Alibaba Bailian**: Visit [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)
 
 #### Performance Tips
 
@@ -827,9 +842,34 @@ For hosted providers:
 export OPENAI_API_KEY="your_openai_api_key_here"
 export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
 export GEMINI_API_KEY="your_gemini_api_key_here"
+export DASHSCOPE_API_KEY="your_dashscope_api_key_here"   # Alibaba Bailian / 百炼
 ```
 
 Then run CLI, Streamlit, or notebooks normally.
+
+#### Using Alibaba Bailian (百炼)
+
+ChemGraph supports Alibaba's Bailian platform via its OpenAI-compatible DashScope endpoint. Supported models include `qwen-max`, `qwen-plus`, `qwen-turbo`, `qwq-32b`, `deepseek-r1`, `deepseek-v3`, and more.
+
+1. Set your DashScope API key:
+
+```bash
+export DASHSCOPE_API_KEY="sk-xxxx"
+```
+
+2. Optionally configure the endpoint in `config.toml` (default is already set):
+
+```toml
+[api.bailian]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+timeout = 30
+```
+
+3. Run with a Bailian model:
+
+```bash
+chemgraph --config config.toml -m qwen-max -q "Optimize the geometry of water molecule"
+```
 </details>
 
 <details>

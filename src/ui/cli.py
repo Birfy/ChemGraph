@@ -104,10 +104,15 @@ def check_api_keys(model_name: str) -> tuple[bool, str]:
                 False,
                 "GROQ API key not found. Please set GROQ_API_KEY environment variable.",
             )
+    # Check Alibaba Bailian models
+    elif any(name in model_lower for name in ["qwen", "deepseek"]):
+        if not os.getenv("DASHSCOPE_API_KEY"):
+            return (
+                False,
+                "DashScope API key not found. Please set DASHSCOPE_API_KEY environment variable.",
+            )
     # Check local models (no API key needed)
-    elif any(local in model_lower for local in ["llama", "qwen", "ollama"]):
-        # For local models, we might want to check if the service is running
-        # but for now, we'll assume they're available
+    elif any(local in model_lower for local in ["llama", "ollama"]):
         pass
 
     return True, ""
@@ -193,8 +198,8 @@ Examples:
     parser.add_argument(
         "--recursion-limit",
         type=int,
-        default=20,
-        help="Recursion limit for agent workflows (default: 20)",
+        default=100,
+        help="Recursion limit for agent workflows (default: 100)",
     )
 
     # Interactive mode
@@ -321,9 +326,14 @@ def check_api_keys_status():
             "examples": "gpt-oss-20b, gpt-oss-120b",
         },
         {
+            "provider": "Bailian (百炼)",
+            "env_var": "DASHSCOPE_API_KEY",
+            "examples": "qwen-max, qwen-plus, qwq-32b",
+        },
+        {
             "provider": "Local/Ollama",
             "env_var": "Not Required",
-            "examples": "llama3.2, qwen2.5",
+            "examples": "llama3.2, llama3.1",
         },
     ]
 
