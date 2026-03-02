@@ -472,6 +472,7 @@ def run_ase(params: ASEInputSchema) -> ASEOutputSchema:
             "ensemble": ensemble,
             "total_steps": md_steps,
             "timestep_fs": md_timestep,
+            "trajectory_interval": trajectory_interval,
             "total_time_fs": total_time_fs,
             "target_temperature_K": md_temperature,
             "n_frames": len(pot_energies),

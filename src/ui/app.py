@@ -1258,6 +1258,68 @@ def is_infrared_requested(messages):
     return False
 
 
+def is_md_requested(messages) -> bool:
+    """Return True when messages indicate an MD simulation was run."""
+    for message in messages:
+        name = getattr(message, "name", None) or (
+            message.get("name") if isinstance(message, dict) else None
+        )
+        if name == "run_ase":
+            raw = getattr(message, "content", "") or (
+                message.get("content", "") if isinstance(message, dict) else ""
+            )
+            content = normalize_message_content(raw).lower()
+            if "md simulation" in content or "trajectory saved" in content:
+                return True
+    return False
+
+
+def extract_traj_path_from_messages(messages) -> Optional[str]:
+    """Extract the MD trajectory .traj file path from tool messages."""
+    traj_pattern = re.compile(r"(/[^\s'\"` ]+?\.traj)")
+    for message in reversed(messages):
+        raw = ""
+        if hasattr(message, "content"):
+            raw = getattr(message, "content", "")
+        elif isinstance(message, dict):
+            raw = message.get("content", "")
+        else:
+            raw = str(message)
+        content = normalize_message_content(raw)
+        match = traj_pattern.search(content)
+        if match:
+            path = match.group(1)
+            if os.path.isfile(path):
+                return path
+    return None
+
+
+def extract_md_data_from_messages(messages) -> Optional[dict]:
+    """Read md_data from the MD output JSON file referenced in messages."""
+    json_pattern = re.compile(r"(/[^\s'\"` ]+?\.json)")
+    for message in reversed(messages):
+        raw = ""
+        if hasattr(message, "content"):
+            raw = getattr(message, "content", "")
+        elif isinstance(message, dict):
+            raw = message.get("content", "")
+        else:
+            raw = str(message)
+        content = normalize_message_content(raw)
+        for match in json_pattern.finditer(content):
+            path = match.group(1)
+            if os.path.isfile(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    md = data.get("md_data", {})
+                    if md and md.get("total_steps"):
+                        return md
+                except Exception:
+                    continue
+    return None
+
+
 # Streamlit-specific wrapper for ASE functions
 def create_ase_atoms_with_streamlit_error(atomic_numbers, positions):
     """Wrapper for create_ase_atoms that displays errors in Streamlit."""
@@ -1526,10 +1588,10 @@ def extract_log_dir_from_messages(messages) -> Optional[str]:
     if not messages:
         return None
     patterns = [
-        r"(/[^\\s'\"`]+?\\.json)",
-        r"(/[^\\s'\"`]+?\\.xyz)",
-        r"(/[^\\s'\"`]+?\\.html)",
-        r"(/[^\\s'\"`]+?\\.csv)",
+        r"(/[^\s'\"` ]+?\.json)",
+        r"(/[^\s'\"` ]+?\.xyz)",
+        r"(/[^\s'\"` ]+?\.html)",
+        r"(/[^\s'\"` ]+?\.csv)",
     ]
 
     def _scan_value(value):
@@ -1825,6 +1887,143 @@ if st.session_state.conversation_history:
 
             else:
                 st.warning("IR spectrum not found.")
+
+        # MD trajectory animation and results
+        if is_md_requested(messages):
+            traj_file = extract_traj_path_from_messages(messages)
+            md_data_result = extract_md_data_from_messages(messages)
+            if traj_file or md_data_result:
+                with st.expander("🎬 MD Simulation Results", expanded=True):
+                    # --- Summary metrics ---
+                    if md_data_result:
+                        st.markdown("**Simulation Summary**")
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric(
+                            "Ensemble",
+                            md_data_result.get("ensemble", "—").upper(),
+                        )
+                        m2.metric(
+                            "Total Time",
+                            f"{md_data_result.get('total_time_fs', 0):.0f} fs",
+                        )
+                        m3.metric(
+                            "Mean Temperature",
+                            f"{md_data_result.get('mean_temperature_K', 0):.1f} K",
+                            delta=f"target {md_data_result.get('target_temperature_K', '—')} K",
+                        )
+                        m4.metric(
+                            "Mean Pot. Energy",
+                            f"{md_data_result.get('mean_potential_energy_eV', 0):.4f} eV",
+                        )
+
+                        st.markdown("---")
+
+                        # --- Energy & temperature plots ---
+                        temps = md_data_result.get("temperatures_K", [])
+                        pot_e = md_data_result.get("potential_energies_eV", [])
+                        kin_e = md_data_result.get("kinetic_energies_eV", [])
+                        timestep = md_data_result.get("timestep_fs", 1.0)
+                        interval = md_data_result.get("trajectory_interval", 10) if "trajectory_interval" in md_data_result else (
+                            int(md_data_result.get("total_steps", len(temps)) / len(temps)) if temps else 1
+                        )
+
+                        if temps or pot_e:
+                            n = max(len(temps), len(pot_e))
+                            # Use stored trajectory_interval for accurate time axis
+                            interval = md_data_result.get("trajectory_interval", 1)
+                            times = [i * interval * timestep for i in range(n)]
+
+                            try:
+                                import altair as alt
+                                _altair_ok = True
+                            except ImportError:
+                                _altair_ok = False
+
+                            chart_col1, chart_col2 = st.columns(2)
+                            with chart_col1:
+                                if temps:
+                                    st.markdown("**Temperature Evolution**")
+                                    df_temp = pd.DataFrame(
+                                        {"Time (fs)": times[: len(temps)], "Temperature (K)": temps}
+                                    )
+                                    if _altair_ok:
+                                        st.altair_chart(
+                                            alt.Chart(df_temp).mark_line().encode(
+                                                x=alt.X("Time (fs):Q", title="Time (fs)"),
+                                                y=alt.Y("Temperature (K):Q", title="Temperature (K)"),
+                                            ).properties(height=220),
+                                            use_container_width=True,
+                                        )
+                                    else:
+                                        st.line_chart(df_temp, x="Time (fs)", y="Temperature (K)", height=220)
+                            with chart_col2:
+                                if pot_e:
+                                    st.markdown("**Energy Evolution**")
+                                    df_energy = pd.DataFrame({
+                                        "Time (fs)": times[: len(pot_e)],
+                                        "Pot. Energy (eV)": pot_e,
+                                    })
+                                    if kin_e:
+                                        df_energy["Total Energy (eV)"] = [
+                                            p + k for p, k in zip(pot_e, kin_e[: len(pot_e)])
+                                        ]
+                                    if _altair_ok:
+                                        e_cols = ["Pot. Energy (eV)"]
+                                        if "Total Energy (eV)" in df_energy:
+                                            e_cols.append("Total Energy (eV)")
+                                        df_melt = df_energy[["Time (fs)"] + e_cols].melt(
+                                            "Time (fs)", var_name="Series", value_name="Energy (eV)"
+                                        )
+                                        st.altair_chart(
+                                            alt.Chart(df_melt).mark_line().encode(
+                                                x=alt.X("Time (fs):Q", title="Time (fs)"),
+                                                y=alt.Y("Energy (eV):Q", title="Energy (eV)"),
+                                                color="Series:N",
+                                            ).properties(height=220),
+                                            use_container_width=True,
+                                        )
+                                    else:
+                                        e_cols = ["Pot. Energy (eV)"]
+                                        if "Total Energy (eV)" in df_energy:
+                                            e_cols.append("Total Energy (eV)")
+                                        st.line_chart(df_energy, x="Time (fs)", y=e_cols, height=220)
+
+                        st.markdown("---")
+
+                    # --- 3D animation ---
+                    if traj_file:
+                        st.markdown("**Trajectory Animation**")
+                        if not STMOL_AVAILABLE:
+                            st.info(
+                                "3D animation not available; install stmol to visualize MD trajectories."
+                            )
+                            st.markdown(f"Trajectory file: `{traj_file}`")
+                        else:
+                            try:
+                                from ase.io.trajectory import Trajectory as AseTraj
+
+                                traj = AseTraj(traj_file)
+                                n_frames = len(traj)
+                                col_info, col_speed = st.columns([2, 1])
+                                with col_info:
+                                    st.caption(
+                                        f"`{Path(traj_file).name}` — {n_frames} frames"
+                                    )
+                                with col_speed:
+                                    interval_ms = st.slider(
+                                        "Speed (ms/frame)",
+                                        min_value=50,
+                                        max_value=500,
+                                        value=100,
+                                        step=50,
+                                        key=f"md_speed_{idx}",
+                                    )
+                                view = visualize_trajectory(traj)
+                                view.animate({"loop": "forward", "interval": interval_ms})
+                                stmol.showmol(view, height=420, width=600)
+                            except Exception as exc:
+                                st.error(f"Failed to render MD trajectory: {exc}")
+                                st.markdown(f"Trajectory file: `{traj_file}`")
 
         # Optional debug information
         with st.expander(f"🔍 Verbose Info (Query {idx})", expanded=False):
